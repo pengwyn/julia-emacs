@@ -183,12 +183,24 @@
              "::" "."))
           (regexp-opt '(" #" " \n" "#" "\n"))))
 
+(defconst julia-logical-short-circuit
+  (regexp-opt '("&&" "||")))
+
 (defconst julia-unquote-regex
   "\\(\\s(\\|\\s-\\|-\\|[,%=<>\\+*/?&|!\\^~\\\\;:]\\|^\\)\\($[a-zA-Z0-9_]+\\)")
 
 (defconst julia-forloop-in-regex
   "for +.*[^
 ].* \\(in\\)\\(\\s-\\|$\\)+")
+
+(defconst julia-macro-regex
+  (rx symbol-start (group "@" (1+ (or word (syntax symbol))))))
+
+(defconst julia-macro-regex-nogrouping
+  (rx symbol-start (: "@" (1+ (or word (syntax symbol))))))
+
+(defconst julia-prefixed-macro (rx-to-string `(: (* (: (1+ word) ".")) (regexp ,julia-macro-regex-nogrouping))))
+(defconst julia-prefixed-macro-list (rx-to-string `(: (* space) (* (regexp ,julia-prefixed-macro) (* space)))))
 
 (defconst julia--forloop-=-regex
   (rx "for"
@@ -207,17 +219,17 @@
 
 ;; functions of form "function f(x) nothing end"
 (defconst julia-function-regex
-  (rx line-start (* (or space "@inline" "@noinline")) symbol-start
+  (rx-to-string `(: line-start (regexp ,julia-prefixed-macro-list) symbol-start
       "function"
       (1+ space)
       ;; Don't highlight module names in function declarations:
       (* (seq (1+ (or word (syntax symbol))) "."))
       ;; The function name itself
-      (group (1+ (or word (syntax symbol))))))
+      (group (1+ (or word (syntax symbol)))))))
 
 ;; functions of form "f(x) = nothing"
 (defconst julia-function-assignment-regex
-  (rx line-start (* (or space "@inline" "@noinline")) symbol-start
+  (rx-to-string `(: line-start (regexp ,julia-prefixed-macro-list) symbol-start
       (* (seq (1+ (or word (syntax symbol))) ".")) ; module name
       (group (1+ (or word (syntax symbol))))
       "(" (* (or
@@ -229,7 +241,7 @@
       (* space)
       (* (seq "where" (or "{" (+ space)) (+ (not (any "=")))))
       "="
-      (not (any "="))))
+      (not (any "=")))))
 
 (defconst julia-type-regex
   (rx symbol-start (or ;;"immutable" "type" ;; remove after 0.6
@@ -242,9 +254,6 @@
 (defconst julia-subtype-regex
   (rx "<:" (0+ space) (group (1+ (or word (syntax symbol)))) (0+ space) (or "\n" "{" "}" "end" ",")))
 
-(defconst julia-macro-regex
-  (rx symbol-start (group "@" (1+ (or word (syntax symbol))))))
-
 (defconst julia-keyword-regex
   (regexp-opt
    '("if" "else" "elseif" "while" "for" "begin" "end" "quote"
@@ -256,6 +265,13 @@
      ;; "immutable" "type" "bitstype" "abstract" "typealias" ;; removed in 1.0
      "abstract type" "primitive type" "struct" "mutable struct")
    'symbols))
+
+(defconst julia-anonymous-function-regex
+  "->")
+(defface julia-font-lock-operator-face
+  '((t (:inherit font-lock-type-face
+                 :weight bold)))
+  "Operator face")
 
 (defconst julia-quoted-symbol-regex
   ;; :foo and :foo2 are valid, but :123 is not.
@@ -270,6 +286,8 @@
    ;; highlighted as a keyword.
    (list julia-quoted-symbol-regex 1 ''julia-quoted-symbol-face)
    (cons julia-keyword-regex 'font-lock-keyword-face)
+   (cons julia-anonymous-function-regex ''font-lock-operator-face)
+   (cons julia-logical-short-circuit ''font-lock-operator-face)
    (cons julia-macro-regex ''julia-macro-face)
    (cons
     (regexp-opt
@@ -704,22 +722,16 @@ Return nil if point is not in a function, otherwise point."
 ;;; IMENU
 (defvar julia-imenu-generic-expression
   ;; don't use syntax classes, screws egrep
-  '(("Function (_)" "[ \t]*function[ \t]+\\(_[^ \t\n]*\\)" 1)
-    ("Function" "^[ \t]*function[ \t]+\\([^_][^\t\n]*\\)" 1)
-    ("Const" "[ \t]*const \\([^ \t\n]*\\)" 1)
-    ("Type"  "^[ \t]*[a-zA-Z0-9_]*type[a-zA-Z0-9_]* \\([^ \t\n]*\\)" 1)
-    ("Require"      " *\\(\\brequire\\)(\\([^ \t\n)]*\\)" 2)
-    ("Include"      " *\\(\\binclude\\)(\\([^ \t\n)]*\\)" 2)
-    ;; ("Classes" "^.*setClass(\\(.*\\)," 1)
-    ;; ("Coercions" "^.*setAs(\\([^,]+,[^,]*\\)," 1) ; show from and to
-    ;; ("Generics" "^.*setGeneric(\\([^,]*\\)," 1)
-    ;; ("Methods" "^.*set\\(Group\\|Replace\\)?Method(\"\\(.+\\)\"," 2)
-    ;; ;;[ ]*\\(signature=\\)?(\\(.*,?\\)*\\)," 1)
-    ;; ;;
-    ;; ;;("Other" "^\\(.+\\)\\s-*<-[ \t\n]*[^\\(function\\|read\\|.*data\.frame\\)]" 1)
-    ;; ("Package" "^.*\\(library\\|require\\)(\\(.*\\)," 2)
-    ;; ("Data" "^\\(.+\\)\\s-*<-[ \t\n]*\\(read\\|.*data\.frame\\).*(" 1)))
-    ))
+  (let ((macroprefix (rx (* (or space (eval julia-prefixed-macro))))))
+  `(("Function (_)" ,(concat macroprefix "[ \t]*function[ \t]+\\(_[^ \t\n]*\\)") 1)
+    ("Function" ,(concat macroprefix "[ \t]*function[ \t]+\\([^_][^\t\n]*\\)") 1)
+    ("Const" ,(concat macroprefix "[ \t]*const \\([^ \t\n]*\\)") 1)
+    ("Type"  ,(concat macroprefix "^[ \t]*[a-zA-Z0-9_]*type[a-zA-Z0-9_]* \\([^ \t\n]*\\)") 1)
+    ("Struct" ,(concat macroprefix "\\(?:[[:blank:]]*mutable\\)?[[:blank:]]+struct[[:blank:]]+\\([^{[:blank:]\n]+\\)") 1)
+    ;; ("Require"      " *\\(\\brequire\\)(\\([^ \t\n)]*\\)" 2)
+    ;; ("Include"      " *\\(\\binclude\\)(\\([^ \t\n)]*\\)" 2)
+    ("Using"      ,(concat macroprefix "[[:blank:]]*using[[:blank:]]*\\(.*\\)") 1)
+    )))
 
 ;;;###autoload
 (define-derived-mode julia-mode prog-mode "Julia"
