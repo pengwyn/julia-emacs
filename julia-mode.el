@@ -286,8 +286,8 @@
    ;; highlighted as a keyword.
    (list julia-quoted-symbol-regex 1 ''julia-quoted-symbol-face)
    (cons julia-keyword-regex 'font-lock-keyword-face)
-   (cons julia-anonymous-function-regex ''font-lock-operator-face)
-   (cons julia-logical-short-circuit ''font-lock-operator-face)
+   (cons julia-anonymous-function-regex ''julia-font-lock-operator-face)
+   (cons julia-logical-short-circuit ''julia-font-lock-operator-face)
    (cons julia-macro-regex ''julia-macro-face)
    (cons
     (regexp-opt
