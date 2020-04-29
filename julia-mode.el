@@ -719,6 +719,7 @@ Return nil if point is not in a function, otherwise point."
       (end-of-line)
       (point))))
 
+;; TODO: Make sure this works, even when starting from inside a confusing region.
 (defun julia-at-start-keyword ()
   (julia-at-keyword julia-block-start-keywords))
 
