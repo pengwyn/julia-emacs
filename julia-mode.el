@@ -46,6 +46,21 @@
   :group 'languages
   :prefix "julia-")
 
+(defcustom julia-mode-use-poly nil
+  "If non-nil then use a poly mode which uses markdown for docstrings."
+  :group 'julia
+  :type 'boolean)
+
+(defgroup julia-poly ()
+  "Options for the julia poly defintion."
+  :group 'julia
+  :prefix "julia-poly-")
+
+(defcustom julia-poly-background 10
+  "What background shade for the docstrings."
+  :group 'julia
+  :type 'integer)
+
 (defcustom julia-indent-offset 4
   "Number of spaces per indentation level."
   :type 'integer
@@ -63,7 +78,8 @@
 
 
 ;;;###autoload
-(add-to-list 'auto-mode-alist '("\\.jl\\'" . julia-mode))
+;; (add-to-list 'auto-mode-alist '("\\.jl\\'" . julia-mode))
+(add-to-list 'auto-mode-alist '("\\.jl\\'" . julia-mode-poly-select))
 
 (defvar julia-mode-syntax-table
   (let ((table (make-syntax-table)))
@@ -959,6 +975,25 @@ following commands are defined:
   "Run an inferior instance of julia inside Emacs.")
 
 (provide 'julia-mode)
+
+(define-hostmode poly-julia-hostmode
+  :mode 'julia-mode)
+
+(define-innermode poly-julia-docstring-innermode
+  :mode 'markdown-mode
+  :head-matcher "^[ \t\n]*\n\"\"\"\n"
+  :tail-matcher "^\"\"\"[ \t]*\n"
+  :head-mode 'host
+  :tail-mode 'host
+  :adjust-face julia-poly-background)
+(define-polymode poly-julia-mode
+  :hostmode 'poly-julia-hostmode
+  :innermodes '(poly-julia-docstring-innermode))
+
+(defun julia-mode-poly-select ()
+  (if julia-mode-use-poly
+      (poly-julia-mode)
+    (julia-mode)))
 
 ;; Local Variables:
 ;; coding: utf-8
